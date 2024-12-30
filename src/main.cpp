@@ -48,7 +48,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <cinttypes> // for PRId64
 #include <array>
 
+#if BOOST_VERSION < 106600
 #include <boost/uuid/sha1.hpp>
+#else
+#include <boost/uuid/detail/sha1.hpp>
+#endif
 #include <boost/crc.hpp>
 #include <boost/system/error_code.hpp>
 #include <boost/circular_buffer.hpp>
@@ -324,13 +328,21 @@ void generate_id_sha1(address const& ip_, boost::uint32_t r, char* id)
 	sha1 ctx;
 	ctx.process_bytes(ip, 4);
 	ctx.process_byte(rand);
+#if BOOST_VERSION >= 108600
+	boost::uuids::detail::sha1::digest_type d;
+	ctx.get_digest(d);
+	id[0] = d[0];
+	id[1] = d[1];
+	id[2] = d[2];
+	id[3] = d[3];
+#else
 	uint32_t d[5];
 	ctx.get_digest(d);
-
 	id[0] = (d[0] >> 24) & 0xff;
 	id[1] = (d[0] >> 16) & 0xff;
 	id[2] = (d[0] >> 8) & 0xff;
 	id[3] = d[0] & 0xff;
+#endif
 
 	for (int i = 4; i < 19; ++i) id[i] = std::rand();
 	id[19] = r;
@@ -407,6 +419,16 @@ std::array<char, 4> compute_tid(uint8_t const* secret, char const* remote_ip
 	sha1 ctx;
 	ctx.process_bytes(secret, 20);
 	ctx.process_bytes(remote_ip, ip_len);
+#if BOOST_VERSION >= 108600
+	boost::uuids::detail::sha1::digest_type d;
+	ctx.get_digest(d);
+	return {{
+		char(d[0]),
+		char(d[1]),
+		char(d[2]),
+		char(d[3])
+	}};
+#else
 	std::uint32_t d[5];
 	ctx.get_digest(d);
 	return {{
@@ -415,6 +437,7 @@ std::array<char, 4> compute_tid(uint8_t const* secret, char const* remote_ip
 		char((d[0] >> 8) & 0xff),
 		char(d[0] & 0xff)
 	}};
+#endif
 }
 
 bool verify_tid(span<char> tid, uint8_t const* secret1, uint8_t const* secret2
